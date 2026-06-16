@@ -5,12 +5,16 @@ import pytest
 
 from ccbox.runtime.oci import DockerRuntime
 from ccbox.sandbox import (
+    adversarial_effective_config,
+    adversarial_workspace,
     build_enter_command,
+    cache_dir,
     container_name,
     effective_config,
     enter,
     expand_mounts,
     merge_claude_settings,
+    seed_workspace,
     warm_command_sequence,
     write_claude_settings,
 )
@@ -227,3 +231,59 @@ def test_enter_warm_unsupported_runtime_raises(tmp_path):
             dry_run=True,
             status=lambda binary, name: "running",
         )
+
+
+def test_cache_dir_env_override(monkeypatch, tmp_path):
+    monkeypatch.setenv("CCBOX_CACHE_DIR", str(tmp_path / "mycache"))
+    assert cache_dir() == tmp_path / "mycache"
+
+
+def test_adversarial_workspace_paths(tmp_path):
+    work, outbox = adversarial_workspace(tmp_path, cache_base=tmp_path / "cache")
+    assert work.parent == outbox.parent
+    assert work.name == "work"
+    assert outbox.name == "outbox"
+    assert "ccbox-" in work.parent.name
+
+
+def test_seed_workspace_copies_then_skips(tmp_path):
+    source = tmp_path / "proj"
+    (source / "sub").mkdir(parents=True)
+    (source / "file.txt").write_text("hi")
+    (source / ".venv").mkdir()
+    (source / ".venv" / "junk").write_text("x")
+    work = tmp_path / "cache" / "work"
+    assert seed_workspace(source, work) is True
+    assert (work / "file.txt").read_text() == "hi"
+    assert not (work / ".venv").exists()  # heavy dir skipped
+    assert seed_workspace(source, work) is False  # already seeded
+
+
+def test_adversarial_effective_config_mounts_copy_and_outbox(tmp_path):
+    work = tmp_path / "work"
+    outbox = tmp_path / "outbox"
+    work.mkdir()
+    outbox.mkdir()
+    result = adversarial_effective_config({"mounts": []}, work, outbox)
+    sources = [mount["src"] for mount in result["mounts"]]
+    assert str(work.resolve()) in sources
+    assert str(outbox.resolve()) in sources
+    assert result["workdir"] == str(work.resolve())
+
+
+def test_enter_adversarial_dry_run_isolates_host(tmp_path, monkeypatch, capsys):
+    cache = tmp_path.parent / "ccbox-cache-test"  # outside the project dir
+    monkeypatch.setenv("CCBOX_CACHE_DIR", str(cache))
+    config = {
+        "runtime": "docker",
+        "image": "img:latest",
+        "mode": "adversarial",
+        "network": "deny",
+    }
+    work_dir, _ = adversarial_workspace(tmp_path)
+    assert enter(config, tmp_path, dry_run=True) == 0
+    captured = capsys.readouterr()
+    assert str(tmp_path.resolve()) not in captured.out  # host project not mounted
+    assert str(work_dir.resolve()) in captured.out  # isolated copy under the cache
+    assert "--network" in captured.out and "none" in captured.out
+    assert "adversarial work copy" in captured.err  # location notice

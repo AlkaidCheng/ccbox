@@ -4,14 +4,18 @@ The project directory is mounted read-write and becomes the working directory,
 the rendered ``.claude/settings.json`` is merged into the project so Claude
 inside the sandbox picks up the deny rules, and the resolved runtime command runs
 (or printed, with ``dry_run``). Mount paths support ``~`` and ``$VAR``
-expansion so configs can reference e.g. ``$CONDA_PREFIX``.
+expansion so configs can reference e.g. ``$CONDA_PREFIX``. In adversarial mode
+an isolated copy of the project is mounted instead of the host project, with an
+outbox directory for files exported from the sandbox.
 """
 
 import copy
 import hashlib
 import json
 import os
+import shutil
 import subprocess
+import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
@@ -282,6 +286,118 @@ def warm_command_sequence(
     return [runtime.build_create_command(config, name), exec_command]
 
 
+CACHE_ENV_VAR = "CCBOX_CACHE_DIR"
+
+
+def cache_dir() -> Path:
+    """Return the ccbox cache directory.
+
+    ``CCBOX_CACHE_DIR`` takes precedence if set; otherwise the platform cache
+    directory is used (``%LOCALAPPDATA%`` on Windows, ``$XDG_CACHE_HOME`` or
+    ``~/.cache`` elsewhere) under a ``ccbox`` subdirectory.
+    """
+    override = os.environ.get(CACHE_ENV_VAR)
+    if override:
+        return Path(override)
+    if sys.platform == "win32":
+        base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
+    else:
+        base = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
+    return Path(base) / "ccbox"
+
+
+_SEED_IGNORE = (
+    ".venv",
+    "venv",
+    "node_modules",
+    "__pycache__",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".pytest_cache",
+)
+
+
+def adversarial_workspace(
+    project_dir: Path, cache_base: Path | None = None
+) -> tuple[Path, Path]:
+    """Return the (work copy, outbox) directories for an adversarial sandbox.
+
+    Both live under the ccbox cache, keyed by the project's stable container
+    name, so they persist across runs and stay outside the host project.
+
+    Parameters
+    ----------
+    project_dir : Path
+        The project directory.
+    cache_base : Path or None, optional
+        Base cache directory. Defaults to :func:`cache_dir`.
+
+    Returns
+    -------
+    tuple[Path, Path]
+        ``(work_dir, outbox_dir)``.
+    """
+    base = Path(cache_base) if cache_base is not None else cache_dir()
+    root = base / container_name(project_dir)
+    return root / "work", root / "outbox"
+
+
+def seed_workspace(project_dir: Path, work_dir: Path) -> bool:
+    """Copy ``project_dir`` into ``work_dir`` if it has not been seeded yet.
+
+    Heavy or regenerable directories (virtualenvs, caches, ``node_modules``)
+    are skipped; everything else is copied as-is.
+
+    Parameters
+    ----------
+    project_dir : Path
+        The source project directory.
+    work_dir : Path
+        The destination copy.
+
+    Returns
+    -------
+    bool
+        True if a copy was made, False if ``work_dir`` already existed.
+    """
+    work_dir = Path(work_dir)
+    if work_dir.exists():
+        return False
+    work_dir.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(project_dir, work_dir, ignore=shutil.ignore_patterns(*_SEED_IGNORE))
+    return True
+
+
+def adversarial_effective_config(
+    config: dict[str, Any], work_dir: Path, outbox_dir: Path
+) -> dict[str, Any]:
+    """Build the effective config for an adversarial sandbox.
+
+    The isolated work copy is mounted read-write as the working directory (the
+    host project is never mounted), and the outbox directory is mounted
+    read-write so files exported from the sandbox land on the host.
+
+    Parameters
+    ----------
+    config : dict
+        The effective ccbox configuration.
+    work_dir : Path
+        The isolated project copy to mount.
+    outbox_dir : Path
+        The directory for files exported from the sandbox.
+
+    Returns
+    -------
+    dict
+        The effective config with the work copy and outbox mounted.
+    """
+    result = effective_config(config, work_dir)
+    outbox = str(Path(outbox_dir).resolve())
+    if not any(str(mount.get("src")) == outbox for mount in result["mounts"]):
+        result["mounts"].append({"src": outbox, "dst": outbox, "mode": "rw"})
+    return result
+
+
 def enter(
     config: dict[str, Any],
     project_dir: Path,
@@ -297,6 +413,9 @@ def enter(
     Applies the project mount and writes ``.claude/settings.json``, then runs
     the resolved runtime command. With ``warm``, a persistent per-project
     container is created on first use and re-entered with ``exec`` thereafter.
+    In adversarial mode the project is copied to an isolated work directory
+    (its location is printed) and that copy is mounted instead of the host
+    project.
 
     Parameters
     ----------
@@ -326,8 +445,21 @@ def enter(
         If ``warm`` is set for a backend that does not support it, or the
         runtime needs an image and none is configured.
     """
-    prepared = effective_config(config, Path(project_dir))
     inner = list(argv) if argv else list(DEFAULT_INNER_COMMAND)
+    if config.get("mode") == "adversarial":
+        work_dir, outbox_dir = adversarial_workspace(project_dir)
+        print(
+            f"ccbox: adversarial work copy at {work_dir} (outbox: {outbox_dir})",
+            file=sys.stderr,
+        )
+        if not dry_run:
+            seed_workspace(Path(project_dir), work_dir)
+            outbox_dir.mkdir(parents=True, exist_ok=True)
+        prepared = adversarial_effective_config(config, work_dir, outbox_dir)
+        settings_dir = work_dir
+    else:
+        prepared = effective_config(config, Path(project_dir))
+        settings_dir = Path(project_dir)
     if warm:
         runtime_name = resolve_runtime(prepared)
         runtime = get_runtime(runtime_name)
@@ -350,7 +482,7 @@ def enter(
         for command in commands:
             print(" ".join(command))
         return 0
-    write_claude_settings(prepared, Path(project_dir))
+    write_claude_settings(prepared, settings_dir)
     exit_code = 0
     for command in commands:
         exit_code = runner(command)

@@ -41,7 +41,7 @@ Configuration is layered: a global config provides defaults, and a per-project
 `.ccbox.yaml` overrides them.
 
 - global: `<config dir>/ccbox/config.yaml`
-- project: `<repo>/.ccbox.yaml`
+- project: `<project>/.ccbox.yaml`
 
 Example `.ccbox.yaml`:
 
@@ -52,6 +52,13 @@ mounts:
   - { src: $CONDA_PREFIX, mode: ro, same_path: true }
   - { src: ./data, dst: /data, mode: rw }
 ```
+
+## Environment variables
+
+- `CCBOX_CACHE_DIR` — where ccbox stores its per-project cache (in adversarial
+  mode, the isolated copy of the project and its outbox). Takes precedence over
+  the platform default (`~/.cache/ccbox`, or `%LOCALAPPDATA%\ccbox` on Windows).
+  Set it to choose your own location.
 
 ## Contributing
 
