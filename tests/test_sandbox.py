@@ -8,6 +8,7 @@ from ccbox.sandbox import (
     effective_config,
     enter,
     expand_mounts,
+    merge_claude_settings,
     write_claude_settings,
 )
 
@@ -116,3 +117,44 @@ def test_effective_config_expands_mount_paths(monkeypatch, tmp_path):
         {"mounts": [{"src": "$CCBOX_TEST_DIR", "mode": "ro"}]}, tmp_path
     )
     assert any(mount["src"] == "/opt/env" for mount in result["mounts"])
+
+
+def test_write_claude_settings_merges_existing(tmp_path):
+    settings = tmp_path / ".claude" / "settings.json"
+    settings.parent.mkdir(parents=True)
+    settings.write_text(
+        json.dumps(
+            {
+                "model": "opus",
+                "permissions": {"deny": ["Read(/secret/**)"], "allow": []},
+            }
+        )
+    )
+    write_claude_settings(CONFIG, tmp_path)
+    data = json.loads(settings.read_text())
+    assert data["model"] == "opus"  # unrelated key preserved
+    assert data["permissions"]["deny"] == ["Read(/secret/**)", "Read(/pscratch/**)"]
+
+
+def test_write_claude_settings_is_idempotent(tmp_path):
+    write_claude_settings(CONFIG, tmp_path)
+    write_claude_settings(CONFIG, tmp_path)
+    data = json.loads((tmp_path / ".claude" / "settings.json").read_text())
+    assert data["permissions"]["deny"] == ["Read(/pscratch/**)"]
+
+
+def test_write_claude_settings_invalid_json_raises(tmp_path):
+    settings = tmp_path / ".claude" / "settings.json"
+    settings.parent.mkdir(parents=True)
+    settings.write_text("{not json")
+    with pytest.raises(ValueError, match="valid JSON"):
+        write_claude_settings(CONFIG, tmp_path)
+
+
+def test_merge_claude_settings_unions_and_dedups():
+    existing = {"x": 1, "permissions": {"deny": ["a"], "allow": ["p"]}}
+    rendered = {"permissions": {"deny": ["a", "b"], "allow": []}}
+    merged = merge_claude_settings(existing, rendered)
+    assert merged["x"] == 1
+    assert merged["permissions"]["deny"] == ["a", "b"]
+    assert merged["permissions"]["allow"] == ["p"]

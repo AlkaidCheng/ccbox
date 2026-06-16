@@ -1,8 +1,8 @@
 """Launch the sandbox: inject Claude settings, build the command, and run it.
 
 The project directory is mounted read-write and becomes the working directory,
-the rendered ``.claude/settings.json`` is written into it so Claude inside the
-sandbox picks up the deny rules, and the resolved runtime command is executed
+the rendered ``.claude/settings.json`` is merged into the project so Claude
+inside the sandbox picks up the deny rules, and the resolved runtime command runs
 (or printed, with ``dry_run``). Mount paths support ``~`` and ``$VAR``
 expansion so configs can reference e.g. ``$CONDA_PREFIX``.
 """
@@ -86,8 +86,55 @@ def effective_config(config: dict[str, Any], project_dir: Path) -> dict[str, Any
     return result
 
 
+def _dedup(items: list[str]) -> list[str]:
+    """Return ``items`` without duplicates, preserving first-seen order."""
+    seen: set[str] = set()
+    result: list[str] = []
+    for item in items:
+        if item not in seen:
+            seen.add(item)
+            result.append(item)
+    return result
+
+
+def merge_claude_settings(
+    existing: dict[str, Any], rendered: dict[str, Any]
+) -> dict[str, Any]:
+    """Merge rendered permission rules into existing settings.
+
+    Other top-level keys and permission entries in ``existing`` are preserved;
+    ``permissions.deny`` and ``permissions.allow`` become the de-duplicated
+    union of the existing and rendered lists (existing first). The merge is
+    idempotent, so repeated runs do not accumulate duplicates.
+
+    Parameters
+    ----------
+    existing : dict
+        The settings already present on disk.
+    rendered : dict
+        The settings produced by :func:`ccbox.claude_settings.render_settings`.
+
+    Returns
+    -------
+    dict
+        The merged settings.
+    """
+    result = copy.deepcopy(existing)
+    permissions = result.setdefault("permissions", {})
+    rendered_permissions = rendered.get("permissions", {})
+    for key in ("deny", "allow"):
+        permissions[key] = _dedup(
+            list(permissions.get(key, [])) + list(rendered_permissions.get(key, []))
+        )
+    return result
+
+
 def write_claude_settings(config: dict[str, Any], project_dir: Path) -> Path:
-    """Write the rendered ``.claude/settings.json`` into the project directory.
+    """Write the ``.claude/settings.json`` for the sandbox.
+
+    When the file already exists, ccbox's deny/allow rules are merged into it
+    (see :func:`merge_claude_settings`) rather than overwriting, preserving any
+    other settings the project already has.
 
     Parameters
     ----------
@@ -100,12 +147,30 @@ def write_claude_settings(config: dict[str, Any], project_dir: Path) -> Path:
     -------
     Path
         The path to the written settings file.
+
+    Raises
+    ------
+    ValueError
+        If an existing settings file is not a valid JSON object.
     """
     settings_path = Path(project_dir) / CLAUDE_SETTINGS_RELPATH
     settings_path.parent.mkdir(parents=True, exist_ok=True)
-    settings_path.write_text(
-        json.dumps(render_settings(config), indent=2) + "\n", encoding="utf-8"
-    )
+    rendered = render_settings(config)
+    if settings_path.exists():
+        try:
+            existing = json.loads(settings_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"{settings_path}: existing settings is not valid JSON"
+            ) from exc
+        if not isinstance(existing, dict):
+            raise ValueError(
+                f"{settings_path}: existing settings must be a JSON object"
+            )
+        payload = merge_claude_settings(existing, rendered)
+    else:
+        payload = rendered
+    settings_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     return settings_path
 
 
