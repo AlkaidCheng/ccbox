@@ -13,11 +13,13 @@ from ccbox.cli.base import Command
 from ccbox.cli.config import COMMANDS as CONFIG_COMMANDS
 from ccbox.cli.diagnostics import COMMANDS as DIAGNOSTICS_COMMANDS
 from ccbox.cli.sandbox import COMMANDS as SANDBOX_COMMANDS
+from ccbox.cli.sync import COMMANDS as SYNC_COMMANDS
 
 COMMAND_GROUPS: Dict[str, List[Type[Command]]] = {
     "config": CONFIG_COMMANDS,
     "sandbox": SANDBOX_COMMANDS,
     "diagnostics": DIAGNOSTICS_COMMANDS,
+    "sync": SYNC_COMMANDS,
 }
 
 ALL_COMMANDS: List[Type[Command]] = [
