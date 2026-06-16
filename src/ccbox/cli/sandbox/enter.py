@@ -5,18 +5,23 @@ import sys
 
 from ...config import load_config
 from ...doctor import check
-from ...runtime import get_runtime, resolve_runtime
+from ...sandbox import enter
 from ..base import Command
 
 
 class EnterCommand(Command):
-    """Resolve the runtime and print the sandbox invocation (dry run)."""
+    """Launch Claude Code (or a given command) inside the sandbox."""
 
     name = "enter"
-    help = "enter the sandbox (dry run for now)"
+    help = "launch the sandbox for the project"
     category = "sandbox"
 
     def add_arguments(self, parser: argparse.ArgumentParser) -> None:
+        parser.add_argument(
+            "--dry-run",
+            action="store_true",
+            help="print the sandbox command without writing settings or running it",
+        )
         parser.add_argument("argv", nargs="*", help="command to run inside the sandbox")
 
     def run(self, args: argparse.Namespace) -> int:
@@ -28,12 +33,7 @@ class EnterCommand(Command):
             print("refusing to enter: fix doctor errors first", file=sys.stderr)
             return 1
         try:
-            name = resolve_runtime(config)
+            return enter(config, args.project_dir, args.argv, dry_run=args.dry_run)
         except (RuntimeError, ValueError) as exc:
             print(f"[error] {exc}", file=sys.stderr)
             return 1
-        command = get_runtime(name).build_run_command(config, args.argv or ["bash"])
-        print(f"# runtime: {name}")
-        print(" ".join(command))
-        print("(dry run: live execution wiring lands in Phase 1)")
-        return 0
