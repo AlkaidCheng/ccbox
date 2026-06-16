@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from ccbox.claude_settings import render_settings
+from ccbox.log import logger
 from ccbox.runtime import Runtime, get_runtime, resolve_runtime
 
 CLAUDE_SETTINGS_RELPATH = Path(".claude") / "settings.json"
@@ -448,10 +449,7 @@ def enter(
     inner = list(argv) if argv else list(DEFAULT_INNER_COMMAND)
     if config.get("mode") == "adversarial":
         work_dir, outbox_dir = adversarial_workspace(project_dir)
-        print(
-            f"ccbox: adversarial work copy at {work_dir} (outbox: {outbox_dir})",
-            file=sys.stderr,
-        )
+        logger.info("adversarial work copy at %s (outbox: %s)", work_dir, outbox_dir)
         if not dry_run:
             seed_workspace(Path(project_dir), work_dir)
             outbox_dir.mkdir(parents=True, exist_ok=True)
