@@ -3,12 +3,15 @@ import os
 
 import pytest
 
+from ccbox.runtime.oci import DockerRuntime
 from ccbox.sandbox import (
     build_enter_command,
+    container_name,
     effective_config,
     enter,
     expand_mounts,
     merge_claude_settings,
+    warm_command_sequence,
     write_claude_settings,
 )
 
@@ -158,3 +161,69 @@ def test_merge_claude_settings_unions_and_dedups():
     assert merged["x"] == 1
     assert merged["permissions"]["deny"] == ["a", "b"]
     assert merged["permissions"]["allow"] == ["p"]
+
+
+def test_container_name_stable_and_prefixed(tmp_path):
+    assert container_name(tmp_path) == container_name(tmp_path)
+    assert container_name(tmp_path).startswith("ccbox-")
+
+
+def test_container_name_differs_by_path(tmp_path):
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
+    assert container_name(tmp_path / "a") != container_name(tmp_path / "b")
+
+
+def test_warm_command_sequence_running():
+    commands = warm_command_sequence(
+        DockerRuntime(),
+        {"image": "img"},
+        "ccbox-x",
+        ["claude"],
+        lambda binary, name: "running",
+    )
+    assert commands == [["docker", "exec", "-it", "ccbox-x", "claude"]]
+
+
+def test_warm_command_sequence_stopped():
+    commands = warm_command_sequence(
+        DockerRuntime(),
+        {"image": "img"},
+        "ccbox-x",
+        ["claude"],
+        lambda binary, name: "stopped",
+    )
+    assert commands[0] == ["docker", "start", "ccbox-x"]
+    assert commands[1][:2] == ["docker", "exec"]
+
+
+def test_warm_command_sequence_absent():
+    commands = warm_command_sequence(
+        DockerRuntime(),
+        {"image": "img"},
+        "ccbox-x",
+        ["claude"],
+        lambda binary, name: "absent",
+    )
+    assert commands[0][:5] == ["docker", "run", "-d", "--name", "ccbox-x"]
+    assert commands[1][:2] == ["docker", "exec"]
+
+
+def test_enter_warm_dry_run(tmp_path, capsys):
+    code = enter(
+        CONFIG, tmp_path, dry_run=True, warm=True, status=lambda binary, name: "running"
+    )
+    assert code == 0
+    assert "exec" in capsys.readouterr().out
+
+
+def test_enter_warm_unsupported_runtime_raises(tmp_path):
+    config = {"runtime": "apptainer", "image": "img.sif"}
+    with pytest.raises(ValueError, match="warm"):
+        enter(
+            config,
+            tmp_path,
+            warm=True,
+            dry_run=True,
+            status=lambda binary, name: "running",
+        )

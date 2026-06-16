@@ -22,6 +22,11 @@ class EnterCommand(Command):
             action="store_true",
             help="print the sandbox command without writing settings or running it",
         )
+        parser.add_argument(
+            "--warm",
+            action="store_true",
+            help="reuse a persistent named container for fast re-entry",
+        )
         parser.add_argument("argv", nargs="*", help="command to run inside the sandbox")
 
     def run(self, args: argparse.Namespace) -> int:
@@ -33,7 +38,13 @@ class EnterCommand(Command):
             print("refusing to enter: fix doctor errors first", file=sys.stderr)
             return 1
         try:
-            return enter(config, args.project_dir, args.argv, dry_run=args.dry_run)
+            return enter(
+                config,
+                args.project_dir,
+                args.argv,
+                dry_run=args.dry_run,
+                warm=args.warm,
+            )
         except (RuntimeError, ValueError) as exc:
             print(f"[error] {exc}", file=sys.stderr)
             return 1

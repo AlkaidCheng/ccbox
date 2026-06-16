@@ -16,6 +16,7 @@ class Runtime(abc.ABC):
     binary: str = ""
     implemented: bool = True
     requires_image: bool = True
+    supports_warm: bool = False
 
     @classmethod
     def available(cls) -> bool:
@@ -39,3 +40,15 @@ class Runtime(abc.ABC):
             The full runtime invocation as an argument vector.
         """
         raise NotImplementedError
+
+    def build_create_command(self, config: dict[str, Any], name: str) -> list[str]:
+        """Return the command that creates a named, detached warm container."""
+        raise NotImplementedError(f"{self.name} does not support warm container reuse")
+
+    def build_start_command(self, name: str) -> list[str]:
+        """Return the command that starts an existing stopped container."""
+        raise NotImplementedError(f"{self.name} does not support warm container reuse")
+
+    def build_exec_command(self, name: str, argv: list[str]) -> list[str]:
+        """Return the command that executes ``argv`` in a running container."""
+        raise NotImplementedError(f"{self.name} does not support warm container reuse")

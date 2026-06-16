@@ -36,3 +36,10 @@ def test_main_enter_dry_run(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "docker" in out
     assert "img:latest" in out
+
+
+def test_main_enter_warm_dry_run(tmp_path, capsys):
+    (tmp_path / ".ccbox.yaml").write_text("runtime: docker\nimage: img:latest\n")
+    exit_code = main(["-C", str(tmp_path), "enter", "--warm", "--dry-run"])
+    assert exit_code == 0
+    assert "exec" in capsys.readouterr().out
