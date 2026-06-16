@@ -45,3 +45,8 @@ Thumbs.db
 # ccbox runtime artifacts
 *.bundle
 *.sif
+
+# Claude Code — local project memory/settings, not shared
+CLAUDE.md
+CLAUDE.local.md
+.claude/
