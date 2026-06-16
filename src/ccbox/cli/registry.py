@@ -1,29 +1,26 @@
-"""Aggregate commands from every category package.
+"""Aggregate every CLI command.
 
-To add a command: create a module in the right category package and append its
-class to that package's ``COMMANDS``. To add a category: create a package with a
-``COMMANDS`` list and register it in :data:`COMMAND_GROUPS` below.
+Commands register themselves by subclassing :class:`~ccbox.cli.base.Command`
+(see :meth:`Command.__init_subclass__`). Importing the category packages below
+runs those subclass definitions; :data:`ALL_COMMANDS` then exposes the collected
+commands sorted by category and name. Adding a command to an existing category
+needs no edit here -- it registers when its category package imports it. A
+brand-new category needs one import line below.
 """
 
 from __future__ import annotations
 
 from typing import Dict, List, Type
 
-from ccbox.cli.base import Command
-from ccbox.cli.config import COMMANDS as CONFIG_COMMANDS
-from ccbox.cli.diagnostics import COMMANDS as DIAGNOSTICS_COMMANDS
-from ccbox.cli.image import COMMANDS as IMAGE_COMMANDS
-from ccbox.cli.sandbox import COMMANDS as SANDBOX_COMMANDS
-from ccbox.cli.sync import COMMANDS as SYNC_COMMANDS
+# Imported for their registration side effects: importing each category package
+# defines its Command subclasses, which self-register via __init_subclass__.
+from ccbox.cli import config, diagnostics, image, sandbox, sync  # noqa: F401
+from ccbox.cli.base import Command, registered_commands
 
-COMMAND_GROUPS: Dict[str, List[Type[Command]]] = {
-    "config": CONFIG_COMMANDS,
-    "sandbox": SANDBOX_COMMANDS,
-    "diagnostics": DIAGNOSTICS_COMMANDS,
-    "sync": SYNC_COMMANDS,
-    "image": IMAGE_COMMANDS,
-}
+ALL_COMMANDS: List[Type[Command]] = sorted(
+    registered_commands(), key=lambda command: (command.category, command.name)
+)
 
-ALL_COMMANDS: List[Type[Command]] = [
-    command for group in COMMAND_GROUPS.values() for command in group
-]
+COMMAND_GROUPS: Dict[str, List[Type[Command]]] = {}
+for _command in ALL_COMMANDS:
+    COMMAND_GROUPS.setdefault(_command.category, []).append(_command)

@@ -1,5 +1,6 @@
+from ccbox.cli.base import Command, registered_commands
 from ccbox.cli.main import build_parser, main
-from ccbox.cli.registry import ALL_COMMANDS
+from ccbox.cli.registry import ALL_COMMANDS, COMMAND_GROUPS
 from ccbox.sandbox import adversarial_workspace
 
 
@@ -11,6 +12,37 @@ def test_all_commands_have_metadata():
 def test_command_names_unique():
     names = [command_class.name for command_class in ALL_COMMANDS]
     assert len(names) == len(set(names))
+
+
+def test_discovery_finds_known_commands():
+    names = {command_class.name for command_class in ALL_COMMANDS}
+    assert {"init", "config", "enter", "bake", "harvest"} <= names
+
+
+def test_command_groups_match_categories():
+    for category, commands in COMMAND_GROUPS.items():
+        assert commands  # no empty groups
+        assert all(command.category == category for command in commands)
+
+
+def test_subclass_self_registers():
+    class _ProbeCommand(Command):
+        name = "_probe"
+        help = "probe"
+        category = "test"
+
+        def run(self, args):
+            return 0
+
+    assert _ProbeCommand in registered_commands()
+
+
+def test_subclass_without_name_is_not_registered():
+    class _AbstractBase(Command):
+        def run(self, args):
+            return 0
+
+    assert _AbstractBase not in registered_commands()
 
 
 def test_parser_dispatches_subcommand():
