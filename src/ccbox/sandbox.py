@@ -8,6 +8,7 @@ expansion so configs can reference e.g. ``$CONDA_PREFIX``.
 """
 
 import copy
+import hashlib
 import json
 import os
 import subprocess
@@ -16,12 +17,13 @@ from pathlib import Path
 from typing import Any
 
 from ccbox.claude_settings import render_settings
-from ccbox.runtime import get_runtime, resolve_runtime
+from ccbox.runtime import Runtime, get_runtime, resolve_runtime
 
 CLAUDE_SETTINGS_RELPATH = Path(".claude") / "settings.json"
 DEFAULT_INNER_COMMAND: tuple[str, ...] = ("claude",)
 
 Runner = Callable[[list[str]], int]
+StatusChecker = Callable[[str, str], str]
 
 
 def _expand_path(value: str) -> str:
@@ -210,6 +212,76 @@ def _subprocess_runner(command: list[str]) -> int:
     return subprocess.run(command, check=False).returncode
 
 
+def container_name(project_dir: Path) -> str:
+    """Return a stable container name derived from the project directory.
+
+    Parameters
+    ----------
+    project_dir : Path
+        The project directory.
+
+    Returns
+    -------
+    str
+        A name of the form ``ccbox-<10 hex digits>``, stable across runs for
+        the same resolved path.
+    """
+    digest = hashlib.sha1(str(Path(project_dir).resolve()).encode()).hexdigest()[:10]
+    return f"ccbox-{digest}"
+
+
+def _container_status(binary: str, name: str) -> str:
+    try:
+        result = subprocess.run(
+            [binary, "container", "inspect", "--format", "{{.State.Running}}", name],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        return "absent"
+    if result.returncode != 0:
+        return "absent"
+    return "running" if result.stdout.strip() == "true" else "stopped"
+
+
+def warm_command_sequence(
+    runtime: Runtime,
+    config: dict[str, Any],
+    name: str,
+    argv: list[str],
+    status: StatusChecker,
+) -> list[list[str]]:
+    """Return the command(s) to warm-enter, based on the container's status.
+
+    Parameters
+    ----------
+    runtime : Runtime
+        A warm-capable backend.
+    config : dict
+        The effective ccbox configuration.
+    name : str
+        The container name.
+    argv : list[str]
+        The command to run inside the container.
+    status : callable
+        Maps ``(binary, name)`` to ``"running"``, ``"stopped"`` or ``"absent"``.
+
+    Returns
+    -------
+    list[list[str]]
+        ``running`` -> exec; ``stopped`` -> start then exec; ``absent`` ->
+        create then exec.
+    """
+    state = status(runtime.binary, name)
+    exec_command = runtime.build_exec_command(name, argv)
+    if state == "running":
+        return [exec_command]
+    if state == "stopped":
+        return [runtime.build_start_command(name), exec_command]
+    return [runtime.build_create_command(config, name), exec_command]
+
+
 def enter(
     config: dict[str, Any],
     project_dir: Path,
@@ -217,11 +289,14 @@ def enter(
     *,
     dry_run: bool = False,
     runner: Runner = _subprocess_runner,
+    warm: bool = False,
+    status: StatusChecker = _container_status,
 ) -> int:
     """Prepare and launch the sandbox for ``project_dir``.
 
-    Applies the project mount, builds the command, and—unless ``dry_run``—
-    writes ``.claude/settings.json`` and runs the command.
+    Applies the project mount and writes ``.claude/settings.json``, then runs
+    the resolved runtime command. With ``warm``, a persistent per-project
+    container is created on first use and re-entered with ``exec`` thereafter.
 
     Parameters
     ----------
@@ -232,20 +307,53 @@ def enter(
     argv : sequence of str or None, optional
         Command to run inside the sandbox. Defaults to ``claude``.
     dry_run : bool, keyword-only, optional
-        When True, print the command without writing settings or running.
+        When True, print the command(s) without writing settings or running.
     runner : callable, keyword-only, optional
-        Executes the command and returns an exit code. Injectable for testing.
+        Executes a command and returns an exit code. Injectable for testing.
+    warm : bool, keyword-only, optional
+        Reuse a persistent named container (OCI backends only).
+    status : callable, keyword-only, optional
+        Maps ``(binary, name)`` to container state. Injectable for testing.
 
     Returns
     -------
     int
-        The exit code of the sandbox command (0 for a dry run).
+        The exit code of the last sandbox command (0 for a dry run).
+
+    Raises
+    ------
+    ValueError
+        If ``warm`` is set for a backend that does not support it, or the
+        runtime needs an image and none is configured.
     """
     prepared = effective_config(config, Path(project_dir))
-    name, command = build_enter_command(prepared, argv)
+    inner = list(argv) if argv else list(DEFAULT_INNER_COMMAND)
+    if warm:
+        runtime_name = resolve_runtime(prepared)
+        runtime = get_runtime(runtime_name)
+        if not runtime.supports_warm:
+            raise ValueError(
+                f"runtime {runtime_name!r} does not support warm container reuse"
+            )
+        if runtime.requires_image and not prepared.get("image"):
+            raise ValueError(
+                f"runtime {runtime_name!r} requires an 'image'; set one in .ccbox.yaml"
+            )
+        commands = warm_command_sequence(
+            runtime, prepared, container_name(project_dir), inner, status
+        )
+    else:
+        runtime_name, command = build_enter_command(prepared, argv)
+        commands = [command]
     if dry_run:
-        print(f"# runtime: {name}")
-        print(" ".join(command))
+        print(f"# runtime: {runtime_name}")
+        for command in commands:
+            print(" ".join(command))
         return 0
     write_claude_settings(prepared, Path(project_dir))
-    return runner(command)
+    exit_code = 0
+    for command in commands:
+        exit_code = runner(command)
+        if exit_code:
+            break
+    return exit_code

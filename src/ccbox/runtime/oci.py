@@ -32,25 +32,49 @@ def mount_to_volume(mount: dict[str, Any]) -> str:
     return f"{source}:{destination}:{mode}"
 
 
-class OciRuntime(Runtime):
-    """Docker-compatible ``run`` CLI shared by docker, podman and podman-hpc."""
+KEEPALIVE_COMMAND: tuple[str, ...] = ("sleep", "infinity")
 
-    def build_run_command(self, config: dict[str, Any], argv: list[str]) -> list[str]:
-        command = [self.binary, "run", "--rm", "-it"]
+
+class OciRuntime(Runtime):
+    """Docker-compatible CLI shared by docker, podman and podman-hpc."""
+
+    supports_warm = True
+
+    def _common_args(self, config: dict[str, Any]) -> list[str]:
+        """Build the shared volume/env/workdir/network arguments."""
+        args: list[str] = []
         for mount in config.get("mounts") or []:
-            command += ["--volume", mount_to_volume(mount)]
+            args += ["--volume", mount_to_volume(mount)]
         for variable in config.get("env") or []:
-            command += ["--env", variable]
+            args += ["--env", variable]
         workdir = config.get("workdir")
         if workdir:
-            command += ["--workdir", workdir]
+            args += ["--workdir", workdir]
         if config.get("network") == "deny":
-            command += ["--network", "none"]
+            args += ["--network", "none"]
+        return args
+
+    def build_run_command(self, config: dict[str, Any], argv: list[str]) -> list[str]:
+        command = [self.binary, "run", "--rm", "-it", *self._common_args(config)]
         image = config.get("image")
         if image:
             command.append(image)
         command += list(argv)
         return command
+
+    def build_create_command(self, config: dict[str, Any], name: str) -> list[str]:
+        command = [self.binary, "run", "-d", "--name", name, *self._common_args(config)]
+        image = config.get("image")
+        if image:
+            command.append(image)
+        command += list(KEEPALIVE_COMMAND)
+        return command
+
+    def build_start_command(self, name: str) -> list[str]:
+        return [self.binary, "start", name]
+
+    def build_exec_command(self, name: str, argv: list[str]) -> list[str]:
+        return [self.binary, "exec", "-it", name, *argv]
 
 
 class DockerRuntime(OciRuntime):

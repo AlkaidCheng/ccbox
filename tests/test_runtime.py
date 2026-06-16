@@ -53,3 +53,28 @@ def test_mount_to_bind_default_dst():
 def test_get_runtime_unknown():
     with pytest.raises(ValueError):
         get_runtime("nope")
+
+
+def test_oci_warm_commands():
+    runtime = PodmanHpcRuntime()
+    config = {"mounts": [{"src": "/a", "mode": "ro"}], "image": "img:latest"}
+    create = runtime.build_create_command(config, "ccbox-x")
+    assert create[:5] == ["podman-hpc", "run", "-d", "--name", "ccbox-x"]
+    assert "/a:/a:ro" in create
+    assert "img:latest" in create
+    assert create[-2:] == ["sleep", "infinity"]
+    assert runtime.build_start_command("ccbox-x") == ["podman-hpc", "start", "ccbox-x"]
+    assert runtime.build_exec_command("ccbox-x", ["claude"]) == [
+        "podman-hpc",
+        "exec",
+        "-it",
+        "ccbox-x",
+        "claude",
+    ]
+    assert runtime.supports_warm is True
+
+
+def test_apptainer_has_no_warm_support():
+    assert ApptainerRuntime().supports_warm is False
+    with pytest.raises(NotImplementedError):
+        ApptainerRuntime().build_exec_command("ccbox-x", ["claude"])
