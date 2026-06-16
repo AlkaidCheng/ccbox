@@ -15,6 +15,7 @@ class Runtime(abc.ABC):
     name: str = "base"
     binary: str = ""
     implemented: bool = True
+    requires_image: bool = True
 
     @classmethod
     def available(cls) -> bool:
