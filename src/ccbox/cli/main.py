@@ -4,6 +4,7 @@ import argparse
 
 from ccbox import __version__
 from ccbox.cli.registry import ALL_COMMANDS
+from ccbox.log import configure_logging
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -43,5 +44,6 @@ def main(argv: list[str] | None = None) -> int:
     int
         The process exit code returned by the dispatched command.
     """
+    configure_logging()
     args = build_parser().parse_args(argv)
     return int(args.command_impl.run(args))

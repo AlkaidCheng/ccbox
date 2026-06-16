@@ -1,11 +1,11 @@
 """``ccbox apply`` -- apply a reviewed git bundle into the host repo."""
 
 import argparse
-import sys
 
 from ccbox.cli.base import Command
 from ccbox.config import load_config
 from ccbox.git_sync import DEFAULT_BUNDLE_NAME, apply
+from ccbox.log import logger
 from ccbox.sandbox import adversarial_workspace
 
 
@@ -41,7 +41,7 @@ class ApplyCommand(Command):
         if bundle is None:
             config = load_config(args.project_dir)
             if config.get("mode") != "adversarial":
-                print("error: a bundle file is required", file=sys.stderr)
+                logger.error("a bundle file is required")
                 return 1
             _, outbox_dir = adversarial_workspace(args.project_dir)
             bundle = str(outbox_dir / DEFAULT_BUNDLE_NAME)

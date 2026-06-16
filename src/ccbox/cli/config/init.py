@@ -1,11 +1,11 @@
 """``ccbox init`` -- scaffold a project .ccbox.yaml."""
 
 import argparse
-import sys
 from pathlib import Path
 
 from ccbox.cli.base import Command
 from ccbox.config import PROJECT_CONFIG_FILENAME
+from ccbox.log import logger
 
 INIT_TEMPLATE = """\
 # ccbox project configuration. Merged over the global config.
@@ -43,10 +43,8 @@ class InitCommand(Command):
         """Write the template, refusing to overwrite unless ``--force`` is set."""
         target = Path(args.project_dir) / PROJECT_CONFIG_FILENAME
         if target.exists() and not args.force:
-            print(
-                f"{target} already exists (use --force to overwrite)", file=sys.stderr
-            )
+            logger.error("%s already exists (use --force to overwrite)", target)
             return 1
         target.write_text(INIT_TEMPLATE, encoding="utf-8")
-        print(f"wrote {target}")
+        logger.info("wrote %s", target)
         return 0
