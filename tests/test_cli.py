@@ -70,3 +70,35 @@ def test_main_enter_adversarial_dry_run(tmp_path, monkeypatch, capsys):
     out = capsys.readouterr().out
     assert str(work_dir.resolve()) in out
     assert str(tmp_path.resolve()) not in out
+
+
+def test_main_harvest_adversarial_uses_workcopy(tmp_path, monkeypatch, capsys):
+    cache = tmp_path.parent / "ccbox-cache-test"
+    monkeypatch.setenv("CCBOX_CACHE_DIR", str(cache))
+    (tmp_path / ".ccbox.yaml").write_text(
+        "mode: adversarial\nnetwork: deny\nimage: img:latest\n"
+    )
+    work_dir, _ = adversarial_workspace(tmp_path)
+    exit_code = main(["-C", str(tmp_path), "harvest", "main", "--dry-run"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert str(work_dir.resolve()) in out  # bundled from the work copy
+    assert "harvest.bundle" in out  # into the outbox
+
+
+def test_main_apply_adversarial_defaults_to_outbox(tmp_path, monkeypatch, capsys):
+    cache = tmp_path.parent / "ccbox-cache-test"
+    monkeypatch.setenv("CCBOX_CACHE_DIR", str(cache))
+    (tmp_path / ".ccbox.yaml").write_text(
+        "mode: adversarial\nnetwork: deny\nimage: img:latest\n"
+    )
+    exit_code = main(["-C", str(tmp_path), "apply", "--dry-run"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "harvest.bundle" in out
+    assert "fetch" in out
+
+
+def test_main_apply_requires_bundle_when_not_adversarial(tmp_path):
+    exit_code = main(["-C", str(tmp_path), "apply", "--dry-run"])
+    assert exit_code == 1
