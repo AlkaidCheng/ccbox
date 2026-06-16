@@ -272,16 +272,18 @@ def test_adversarial_effective_config_mounts_copy_and_outbox(tmp_path):
 
 
 def test_enter_adversarial_dry_run_isolates_host(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("CCBOX_CACHE_DIR", "/ccbox-cache")
+    cache = tmp_path.parent / "ccbox-cache-test"  # outside the project dir
+    monkeypatch.setenv("CCBOX_CACHE_DIR", str(cache))
     config = {
         "runtime": "docker",
         "image": "img:latest",
         "mode": "adversarial",
         "network": "deny",
     }
+    work_dir, _ = adversarial_workspace(tmp_path)
     assert enter(config, tmp_path, dry_run=True) == 0
     captured = capsys.readouterr()
     assert str(tmp_path.resolve()) not in captured.out  # host project not mounted
-    assert "/ccbox-cache" in captured.out  # isolated work copy under the cache
+    assert str(work_dir.resolve()) in captured.out  # isolated copy under the cache
     assert "--network" in captured.out and "none" in captured.out
     assert "adversarial work copy" in captured.err  # location notice

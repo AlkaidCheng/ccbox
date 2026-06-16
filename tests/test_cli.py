@@ -1,5 +1,6 @@
 from ccbox.cli.main import build_parser, main
 from ccbox.cli.registry import ALL_COMMANDS
+from ccbox.sandbox import adversarial_workspace
 
 
 def test_all_commands_have_metadata():
@@ -58,12 +59,14 @@ def test_main_apply_dry_run(tmp_path, capsys):
 
 
 def test_main_enter_adversarial_dry_run(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("CCBOX_CACHE_DIR", "/ccbox-cache")
+    cache = tmp_path.parent / "ccbox-cache-test"  # outside the project dir
+    monkeypatch.setenv("CCBOX_CACHE_DIR", str(cache))
     (tmp_path / ".ccbox.yaml").write_text(
         "runtime: docker\nimage: img:latest\nmode: adversarial\nnetwork: deny\n"
     )
+    work_dir, _ = adversarial_workspace(tmp_path)
     exit_code = main(["-C", str(tmp_path), "enter", "--dry-run"])
     assert exit_code == 0
     out = capsys.readouterr().out
-    assert "/ccbox-cache" in out
+    assert str(work_dir.resolve()) in out
     assert str(tmp_path.resolve()) not in out
