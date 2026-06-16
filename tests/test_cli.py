@@ -55,3 +55,15 @@ def test_main_apply_dry_run(tmp_path, capsys):
     exit_code = main(["-C", str(tmp_path), "apply", "x.bundle", "main", "--dry-run"])
     assert exit_code == 0
     assert "fetch" in capsys.readouterr().out
+
+
+def test_main_enter_adversarial_dry_run(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("CCBOX_CACHE_DIR", "/ccbox-cache")
+    (tmp_path / ".ccbox.yaml").write_text(
+        "runtime: docker\nimage: img:latest\nmode: adversarial\nnetwork: deny\n"
+    )
+    exit_code = main(["-C", str(tmp_path), "enter", "--dry-run"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "/ccbox-cache" in out
+    assert str(tmp_path.resolve()) not in out
