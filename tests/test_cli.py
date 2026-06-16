@@ -43,3 +43,15 @@ def test_main_enter_warm_dry_run(tmp_path, capsys):
     exit_code = main(["-C", str(tmp_path), "enter", "--warm", "--dry-run"])
     assert exit_code == 0
     assert "exec" in capsys.readouterr().out
+
+
+def test_main_harvest_dry_run(tmp_path, capsys):
+    exit_code = main(["-C", str(tmp_path), "harvest", "main", "--dry-run"])
+    assert exit_code == 0
+    assert "bundle" in capsys.readouterr().out
+
+
+def test_main_apply_dry_run(tmp_path, capsys):
+    exit_code = main(["-C", str(tmp_path), "apply", "x.bundle", "main", "--dry-run"])
+    assert exit_code == 0
+    assert "fetch" in capsys.readouterr().out
