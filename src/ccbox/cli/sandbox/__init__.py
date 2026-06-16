@@ -1,6 +1,6 @@
 """Sandbox lifecycle commands."""
 
-from ..base import Command
-from .enter import EnterCommand
+from ccbox.cli.base import Command
+from ccbox.cli.sandbox.enter import EnterCommand
 
 COMMANDS: list[type[Command]] = [EnterCommand]

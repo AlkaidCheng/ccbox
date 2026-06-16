@@ -8,7 +8,7 @@ and independent of the host platform. ``error`` issues block ``ccbox enter``;
 from dataclasses import dataclass
 from typing import Any
 
-from .runtime import REGISTRY
+from ccbox.runtime import REGISTRY
 
 # Substrings that flag a likely-sensitive mount source in any mode.
 SENSITIVE_SRC_HINTS = (

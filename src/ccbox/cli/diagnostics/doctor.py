@@ -2,9 +2,9 @@
 
 import argparse
 
-from ...config import load_config
-from ...doctor import check
-from ..base import Command
+from ccbox.cli.base import Command
+from ccbox.config import load_config
+from ccbox.doctor import check
 
 
 class DoctorCommand(Command):

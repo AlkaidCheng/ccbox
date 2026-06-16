@@ -8,11 +8,11 @@ Override by naming a backend explicitly in config, e.g. ``runtime: docker``.
 import shutil
 from typing import Any
 
-from .apptainer import ApptainerRuntime, SingularityRuntime
-from .base import Runtime
-from .bwrap import BwrapRuntime
-from .oci import DockerRuntime, PodmanHpcRuntime, PodmanRuntime
-from .shifter import ShifterRuntime
+from ccbox.runtime.apptainer import ApptainerRuntime, SingularityRuntime
+from ccbox.runtime.base import Runtime
+from ccbox.runtime.bwrap import BwrapRuntime
+from ccbox.runtime.oci import DockerRuntime, PodmanHpcRuntime, PodmanRuntime
+from ccbox.runtime.shifter import ShifterRuntime
 
 # Order encodes preference (first available wins). HPC-native and rootless
 # backends rank ahead of Docker; the two stubs rank last and are skipped by

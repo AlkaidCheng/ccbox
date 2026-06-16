@@ -2,8 +2,8 @@
 
 import argparse
 
-from .. import __version__
-from .registry import ALL_COMMANDS
+from ccbox import __version__
+from ccbox.cli.registry import ALL_COMMANDS
 
 
 def build_parser() -> argparse.ArgumentParser:

@@ -3,10 +3,10 @@
 import argparse
 import sys
 
-from ...config import load_config
-from ...doctor import check
-from ...sandbox import enter
-from ..base import Command
+from ccbox.cli.base import Command
+from ccbox.config import load_config
+from ccbox.doctor import check
+from ccbox.sandbox import enter
 
 
 class EnterCommand(Command):

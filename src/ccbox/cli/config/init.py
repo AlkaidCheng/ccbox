@@ -4,8 +4,8 @@ import argparse
 import sys
 from pathlib import Path
 
-from ...config import PROJECT_CONFIG_FILENAME
-from ..base import Command
+from ccbox.cli.base import Command
+from ccbox.config import PROJECT_CONFIG_FILENAME
 
 INIT_TEMPLATE = """\
 # ccbox project configuration. Merged over the global config.
