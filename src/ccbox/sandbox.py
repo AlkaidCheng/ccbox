@@ -3,18 +3,20 @@
 The project directory is mounted read-write and becomes the working directory,
 the rendered ``.claude/settings.json`` is written into it so Claude inside the
 sandbox picks up the deny rules, and the resolved runtime command is executed
-(or printed, with ``dry_run``).
+(or printed, with ``dry_run``). Mount paths support ``~`` and ``$VAR``
+expansion so configs can reference e.g. ``$CONDA_PREFIX``.
 """
 
 import copy
 import json
+import os
 import subprocess
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
-from .claude_settings import render_settings
-from .runtime import get_runtime, resolve_runtime
+from ccbox.claude_settings import render_settings
+from ccbox.runtime import get_runtime, resolve_runtime
 
 CLAUDE_SETTINGS_RELPATH = Path(".claude") / "settings.json"
 DEFAULT_INNER_COMMAND: tuple[str, ...] = ("claude",)
@@ -22,11 +24,44 @@ DEFAULT_INNER_COMMAND: tuple[str, ...] = ("claude",)
 Runner = Callable[[list[str]], int]
 
 
+def _expand_path(value: str) -> str:
+    """Expand ``~`` and ``$VAR`` references in a filesystem path."""
+    return os.path.expanduser(os.path.expandvars(value))
+
+
+def expand_mounts(mounts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return mounts with ``~`` and environment variables expanded in paths.
+
+    Only ``src`` and ``dst`` are expanded -- they must resolve on the host to
+    bind-mount -- while modes and other keys are left untouched.
+
+    Parameters
+    ----------
+    mounts : list of dict
+        Mount specifications.
+
+    Returns
+    -------
+    list of dict
+        New mount dicts with expanded ``src``/``dst``.
+    """
+    expanded: list[dict[str, Any]] = []
+    for mount in mounts:
+        new_mount = dict(mount)
+        if new_mount.get("src") is not None:
+            new_mount["src"] = _expand_path(str(new_mount["src"]))
+        if new_mount.get("dst"):
+            new_mount["dst"] = _expand_path(str(new_mount["dst"]))
+        expanded.append(new_mount)
+    return expanded
+
+
 def effective_config(config: dict[str, Any], project_dir: Path) -> dict[str, Any]:
     """Return a copy of ``config`` with the project directory mounted.
 
     The project directory is bind-mounted read-write at its own absolute path
     and set as the working directory, so the agent operates on the real repo.
+    Mount paths from the config are expanded (see :func:`expand_mounts`).
 
     Parameters
     ----------
@@ -43,7 +78,7 @@ def effective_config(config: dict[str, Any], project_dir: Path) -> dict[str, Any
     """
     project_path = str(Path(project_dir).resolve())
     result = copy.deepcopy(config)
-    mounts = result.get("mounts") or []
+    mounts = expand_mounts(result.get("mounts") or [])
     if not any(str(mount.get("src")) == project_path for mount in mounts):
         mounts = [{"src": project_path, "dst": project_path, "mode": "rw"}, *mounts]
     result["mounts"] = mounts
