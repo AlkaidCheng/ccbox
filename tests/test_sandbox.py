@@ -1,4 +1,5 @@
 import json
+import os
 
 import pytest
 
@@ -6,6 +7,7 @@ from ccbox.sandbox import (
     build_enter_command,
     effective_config,
     enter,
+    expand_mounts,
     write_claude_settings,
 )
 
@@ -90,3 +92,27 @@ def test_enter_writes_settings_and_runs(tmp_path):
     assert (tmp_path / ".claude" / "settings.json").is_file()
     assert captured["command"][0] == "docker"
     assert captured["command"][-1] == "bash"
+
+
+def test_expand_mounts_expands_env_var(monkeypatch):
+    monkeypatch.setenv("CCBOX_TEST_DIR", "/opt/env")
+    result = expand_mounts([{"src": "$CCBOX_TEST_DIR/lib", "dst": "/d", "mode": "ro"}])
+    assert result[0]["src"] == "/opt/env/lib"
+    assert result[0]["dst"] == "/d"
+
+
+def test_expand_mounts_expands_user():
+    result = expand_mounts([{"src": "~/data", "mode": "rw"}])
+    assert result[0]["src"] == os.path.expanduser("~/data")
+
+
+def test_expand_mounts_preserves_plain_mount():
+    assert expand_mounts([{"src": "/x", "mode": "ro"}]) == [{"src": "/x", "mode": "ro"}]
+
+
+def test_effective_config_expands_mount_paths(monkeypatch, tmp_path):
+    monkeypatch.setenv("CCBOX_TEST_DIR", "/opt/env")
+    result = effective_config(
+        {"mounts": [{"src": "$CCBOX_TEST_DIR", "mode": "ro"}]}, tmp_path
+    )
+    assert any(mount["src"] == "/opt/env" for mount in result["mounts"])
