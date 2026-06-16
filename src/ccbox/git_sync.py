@@ -11,6 +11,8 @@ from collections.abc import Callable
 
 Runner = Callable[[list[str]], int]
 
+DEFAULT_BUNDLE_NAME = "harvest.bundle"
+
 
 def build_bundle_command(
     branch: str, out_path: str, repo_dir: str | None = None
