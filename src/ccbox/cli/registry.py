@@ -9,10 +9,10 @@ from __future__ import annotations
 
 from typing import Dict, List, Type
 
-from .base import Command
-from .config import COMMANDS as CONFIG_COMMANDS
-from .diagnostics import COMMANDS as DIAGNOSTICS_COMMANDS
-from .sandbox import COMMANDS as SANDBOX_COMMANDS
+from ccbox.cli.base import Command
+from ccbox.cli.config import COMMANDS as CONFIG_COMMANDS
+from ccbox.cli.diagnostics import COMMANDS as DIAGNOSTICS_COMMANDS
+from ccbox.cli.sandbox import COMMANDS as SANDBOX_COMMANDS
 
 COMMAND_GROUPS: Dict[str, List[Type[Command]]] = {
     "config": CONFIG_COMMANDS,

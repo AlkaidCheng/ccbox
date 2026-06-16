@@ -2,8 +2,8 @@
 
 import argparse
 
-from ...runtime import REGISTRY, detect_runtime
-from ..base import Command
+from ccbox.cli.base import Command
+from ccbox.runtime import REGISTRY, detect_runtime
 
 
 class RuntimesCommand(Command):

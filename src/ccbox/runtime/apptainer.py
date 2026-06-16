@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from .base import Runtime
+from ccbox.runtime.base import Runtime
 
 
 def mount_to_bind(mount: dict[str, Any]) -> str:

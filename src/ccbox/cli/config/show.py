@@ -3,8 +3,8 @@
 import argparse
 import json
 
-from ...config import load_config
-from ..base import Command
+from ccbox.cli.base import Command
+from ccbox.config import load_config
 
 
 class ShowConfigCommand(Command):

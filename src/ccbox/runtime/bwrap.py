@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from .base import Runtime
+from ccbox.runtime.base import Runtime
 
 
 class BwrapRuntime(Runtime):

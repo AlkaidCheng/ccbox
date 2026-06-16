@@ -3,9 +3,9 @@
 import argparse
 import json
 
-from ...claude_settings import render_settings
-from ...config import load_config
-from ..base import Command
+from ccbox.claude_settings import render_settings
+from ccbox.cli.base import Command
+from ccbox.config import load_config
 
 
 class RenderCommand(Command):
