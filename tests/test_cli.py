@@ -102,3 +102,40 @@ def test_main_apply_adversarial_defaults_to_outbox(tmp_path, monkeypatch, capsys
 def test_main_apply_requires_bundle_when_not_adversarial(tmp_path):
     exit_code = main(["-C", str(tmp_path), "apply", "--dry-run"])
     assert exit_code == 1
+
+
+def test_main_bake_dry_run(tmp_path, monkeypatch, capsys):
+    import ccbox.image_build as ib
+
+    monkeypatch.setattr(
+        ib.shutil, "which", lambda b: "/x/docker" if b == "docker" else None
+    )
+    (tmp_path / ".ccbox.yaml").write_text(
+        "image: img:latest\nbuild:\n  recipe: Dockerfile\n"
+    )
+    exit_code = main(["-C", str(tmp_path), "bake", "--dry-run"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "build" in out and "img:latest" in out and "Dockerfile" in out
+
+
+def test_main_bake_requires_recipe(tmp_path):
+    (tmp_path / ".ccbox.yaml").write_text("image: img:latest\n")
+    assert main(["-C", str(tmp_path), "bake", "--dry-run"]) == 1
+
+
+def test_main_bake_no_builder(tmp_path, monkeypatch):
+    import ccbox.image_build as ib
+
+    monkeypatch.setattr(ib.shutil, "which", lambda b: None)
+    (tmp_path / ".ccbox.yaml").write_text(
+        "image: img:latest\nbuild:\n  recipe: Dockerfile\n"
+    )
+    assert main(["-C", str(tmp_path), "bake", "--dry-run"]) == 1
+
+
+def test_main_bake_incompatible_runtime(tmp_path):
+    (tmp_path / ".ccbox.yaml").write_text(
+        "image: img:latest\nruntime: bwrap\nbuild:\n  recipe: Dockerfile\n"
+    )
+    assert main(["-C", str(tmp_path), "bake", "--dry-run"]) == 1
