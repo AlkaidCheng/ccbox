@@ -171,3 +171,44 @@ def test_main_bake_incompatible_runtime(tmp_path):
         "image: img:latest\nruntime: bwrap\nbuild:\n  recipe: Dockerfile\n"
     )
     assert main(["-C", str(tmp_path), "bake", "--dry-run"]) == 1
+
+
+def test_main_pull_oci_dry_run(tmp_path, capsys):
+    (tmp_path / ".ccbox.yaml").write_text(
+        "runtime: docker\nimage: docker://registry/img:tag\n"
+    )
+    exit_code = main(["-C", str(tmp_path), "pull", "--dry-run"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "docker pull registry/img:tag"
+
+
+def test_main_pull_sif_dry_run(tmp_path, monkeypatch, capsys):
+    from ccbox.image_pull import sif_filename
+
+    cache = tmp_path.parent / "ccbox-cache-test"
+    monkeypatch.setenv("CCBOX_CACHE_DIR", str(cache))
+    (tmp_path / ".ccbox.yaml").write_text(
+        "runtime: apptainer\nimage: docker://registry/img:tag\n"
+    )
+    exit_code = main(["-C", str(tmp_path), "pull", "--dry-run"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    expected_sif = str(cache / "images" / sif_filename("docker://registry/img:tag"))
+    assert out.strip() == f"apptainer pull {expected_sif} docker://registry/img:tag"
+
+
+def test_main_pull_requires_image(tmp_path):
+    (tmp_path / ".ccbox.yaml").write_text("runtime: docker\n")
+    assert main(["-C", str(tmp_path), "pull", "--dry-run"]) == 1
+
+
+def test_main_pull_requires_url_image(tmp_path):
+    (tmp_path / ".ccbox.yaml").write_text("runtime: docker\nimage: img:latest\n")
+    assert main(["-C", str(tmp_path), "pull", "--dry-run"]) == 1
+
+
+def test_main_pull_incompatible_runtime(tmp_path):
+    (tmp_path / ".ccbox.yaml").write_text(
+        "runtime: bwrap\nimage: docker://registry/img:tag\n"
+    )
+    assert main(["-C", str(tmp_path), "pull", "--dry-run"]) == 1
